@@ -4,15 +4,11 @@ package org.example.report_service.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.example.report_service.dto.MonthlySalesReport;
 import org.example.report_service.model.OrderSnapshot;
 import org.example.report_service.repository.SalesReportRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-
-import java.io.File;
-import java.io.FileOutputStream;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -25,6 +21,7 @@ import java.util.stream.Collectors;
 public class SalesReportService {
 
     private final SalesReportRepository salesReportRepository;
+    private final ExcelExportService excelExportService;
 
     @Value("${report.storage.path}")
     private String storagePath;
@@ -58,43 +55,20 @@ public class SalesReportService {
     public String exportToExcel(int year) {
         List<MonthlySalesReport> reports = getMonthlySales(year);
 
-        new File(storagePath).mkdirs();
-        String filePath = storagePath + "monthly-sales-" + year + ".xlsx";
+        List<String> headers = List.of("Year", "Month", "Total Orders", "Total Revenue");
 
-        try (Workbook workbook = new XSSFWorkbook()) {
-            Sheet sheet = workbook.createSheet("Monthly Sales " + year);
-            Row header = sheet.createRow(0);
-            CellStyle headerStyle = workbook.createCellStyle();
-            Font font = workbook.createFont();
-            font.setBold(true);
-            headerStyle.setFont(font);
+        List<List<String>> rows = reports.stream().map(r -> List.of(
+                String.valueOf(r.getYear()),
+                String.valueOf(r.getMonth()),
+                String.valueOf(r.getTotalOrders()),
+                r.getTotalRevenue().toString()
+        )).collect(Collectors.toList());
 
-            String[] columns = {"Year", "Month", "Total Orders", "Total Revenue"};
-            for (int i = 0; i < columns.length; i++) {
-                Cell cell = header.createCell(i);
-                cell.setCellValue(columns[i]);
-                cell.setCellStyle(headerStyle);
-            }
-
-            int rowNum = 1;
-            for (MonthlySalesReport r : reports) {
-                Row row = sheet.createRow(rowNum++);
-                row.createCell(0).setCellValue(r.getYear());
-                row.createCell(1).setCellValue(r.getMonth());
-                row.createCell(2).setCellValue(r.getTotalOrders());
-                row.createCell(3).setCellValue(r.getTotalRevenue().doubleValue());
-            }
-
-            for (int i = 0; i < columns.length; i++) sheet.autoSizeColumn(i);
-
-            try (FileOutputStream fos = new FileOutputStream(filePath)) {
-                workbook.write(fos);
-            }
-
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to export Excel: " + e.getMessage());
-        }
-
-        return filePath;
+        return excelExportService.export(
+                "Monthly Sales " + year,
+                "monthly-sales-" + year + ".xlsx",
+                headers,
+                rows
+        );
     }
 }
